@@ -1,6 +1,9 @@
-extends Area2D
+extends Node2D
 
 export(PackedScene) var DropTemplate = null
+
+export(NodePath) var camera = null
+export(NodePath) var player = null
 
 export(float) var Drop_Radius_Factor = 1.0
 export(float) var Drops_Per_10_Px = 2.0
@@ -103,7 +106,7 @@ func _ready():
 		return
 	
 	for c in get_children():
-		polygon_areas.append([c, utils.calculate_areas(c)])
+		polygon_areas.append([c, calculate_areas(c)])
 		pass
 	
 	var st = get_viewport().get_visible_rect().size
@@ -147,8 +150,8 @@ func _ready():
 		nframe_hit = HitAnim_EndFrame + 1 - HitAnim_StartFrame
 	else:
 		nframe_hit = 0
-	logger.info("[rain] frame sequence: " + str(framesequence))
-	logger.info("[rain] frame counts: %d %d %d" % [nframe_start, nframe_drop, nframe_hit])
+	print("[rain] frame sequence: " + str(framesequence))
+	print("[rain] frame counts: %d %d %d" % [nframe_start, nframe_drop, nframe_hit])
 	
 	# get the drop collision shape
 	var children = dropobj.get_children()
@@ -160,9 +163,9 @@ func _ready():
 			break
 	if not shape:
 		Passive = true
-		logger.info("[rain] No drop collision shape - Passive mode")
+		print("[rain] No drop collision shape - Passive mode")
 	else:
-		logger.info("[rain] Drop shape transform: " + str(shape_transform))
+		print("[rain] Drop shape transform: " + str(shape_transform))
 	
 	dropobj.queue_free()
 	
@@ -172,9 +175,12 @@ func initialize():
 	randomize()
 	var vrect = get_viewport().get_visible_rect()
 	var st = vrect.size
-	var vt = global.player.camera.get_viewport_transform()
-	var zoom = global.player.camera.get_zoom()
-	var pp = global.player.get_global_position()
+	var zoom = Vector2(1.0, 1.0)
+	if camera:
+		zoom = camera.get_zoom()
+	var pp = vrect.position + vrect.size * 0.5
+	if player:
+		pp = player.get_global_position()
 	cached_viewport_size = Vector2(st.x * zoom.x, st.y * zoom.y)
 	cached_viewport_base = pp - cached_viewport_size * 0.5
 	
@@ -189,7 +195,7 @@ func initialize():
 	# create a bunch of drops
 	var drop_count = (screen_radius / 10.0) * Drops_Per_10_Px
 	
-	logger.info("[rain] initializing drop system with %d drops" % drop_count)
+	print("[rain] initializing drop system with %d drops" % drop_count)
 	
 	for i in range(drop_count):
 		# instance drop
@@ -238,9 +244,10 @@ func random_modulate(d):
 		d.col = Frame_Modulate.interpolate(rand_range(0.0, 1.0))
 
 func _process( delta ):
-	var vt = global.player.camera.get_viewport_transform()
-	var zoom = global.player.camera.get_zoom()
-	cached_viewport_base = -vt.origin * zoom
+	if camera:
+		var vt = camera.get_viewport_transform()
+		var zoom = camera.get_zoom()
+		cached_viewport_base = -vt.origin * zoom
 	
 	var newpos
 	for d in drops:
@@ -340,14 +347,14 @@ func random_drop_point(d):
 		var dir = Vector2(cos(angle), -sin(angle))
 		var fac = rand_range(0.0, screen_radius)
 		var center = Vector2()
-		if global.player:
-			center = global.player.camera.get_camera_screen_center()
+		if camera:
+			center = camera.get_camera_screen_center()
 		d.endpos = center + dir * fac
 		d.pos = d.endpos - rain_direction * Drop_Length
 		
 		var canDrop = false
 		for pa in polygon_areas:
-			if utils.is_point_inside_polygon_full(d.endpos, pa[0]):
+			if is_point_inside_polygon_full(d.endpos, pa[0]):
 				canDrop = true
 				break
 		
@@ -367,9 +374,62 @@ func random_drop_point(d):
 func point_in_any_area(p):
 	if polygon_areas.size() > 0:
 		for pa in polygon_areas:
-			if utils.is_point_inside_polygon(p, pa[0]):
+			if is_point_inside_polygon(p, pa[0]):
 				return true
 		return false
 	return true
 
-	
+static func calculate_areas(poly):
+	var areas = []
+	var total_area = 0.0
+
+	var points = poly.get_polygon()
+	if points.size() < 3:
+		return [areas, 0.0]
+
+	for i in range(points.size() - 2):
+		var a = points[i]
+		var b = points[i + 1]
+		var c = points[i + 2]
+		var area = area_of_triangle(a, b, c)
+		total_area += area
+		areas.append(area)
+	return [areas, total_area]
+
+static func area_of_triangle(A, B, C):
+	return abs(A.x * B.y + A.y * C.x + B.x * C.y - C.x * B.y - C.y * A.x - A.y * B.x) / 2.0
+
+static func is_point_inside_polygon_full( p, poly ):
+	# adapted from http://www.ariel.com.au/a/python-point-int-poly.html
+	var points = poly.get_polygon()
+	var trans = poly.get_global_transform()
+	var n = points.size()
+	var inside = false
+	var p1 = trans * points[0]
+	var p2 = Vector2()
+	var xinters = 0.0
+	for i in range( n + 1 ):
+		p2 = trans * points[ i % n ]
+		if p.y > min( p1.y, p2.y ):
+			if p.y <= max( p1.y, p2.y ):
+				if p.x <= max( p1.x, p2.x ):
+					if p1.y != p2.y:
+						xinters = ( p.y - p1.y ) * ( p2.x - p1.x ) / ( p2.y - p1.y ) + p1.x
+					if p1.x == p2.x or p.x <= xinters:
+						inside = not inside
+		p1 = p2
+	return inside
+
+
+static func is_point_inside_polygon( p, poly ):
+	var points = poly.get_polygon()
+	if points.size() < 3:
+		return false
+	var trans = poly.get_global_transform()
+	for i in range(points.size() - 2):
+		var a = trans * points[i]
+		var b = trans * points[i + 1]
+		var c = trans * points[i + 2]
+		if Geometry.point_is_inside_triangle(p, a, b, c):
+			return true
+	return false

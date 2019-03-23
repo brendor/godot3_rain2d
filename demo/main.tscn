@@ -6,67 +6,29 @@
 [ext_resource path="res://addons/rain2d/rain_remote.gd" type="Script" id=4]
 
 [sub_resource type="Gradient" id=1]
-
-offsets = PoolRealArray( 0, 1 )
 colors = PoolColorArray( 0.867188, 1, 0.993774, 0.143647, 0.808594, 0.932709, 1, 0.447529 )
 
-[node name="root" type="Node2D" index="0"]
+[node name="root" type="Node2D"]
 
-[node name="Rain2D" type="Node2D" parent="." index="0"]
-
+[node name="Rain2D" type="Node2D" parent="."]
 script = ExtResource( 1 )
 __meta__ = {
 "_editor_icon": ExtResource( 2 )
 }
 DropTemplate = ExtResource( 3 )
-camera = null
-player = null
-Drop_Radius_Factor = 1.0
 Drops_Per_10_Px = 3.0
-Drop_Length = 800.0
-Drop_Angle = 67.0
 Size = Vector2( 1, 1 )
-Drop_Through = false
-Drop_Through_On_Miss = true
-Drop_Through_Side_Spread = 600.0
-Passive = true
 Frame_Modulate = SubResource( 1 )
-Start_Alpha_Time = 1.0
-Min_Drop_Speed = 350.0
-Max_Drop_Speed = 400.0
-Use_StartAnim = false
-StartAnim_StartFrame = 0
-StartAnim_EndFrame = 0
-StartAnim_Interval = 0.1
-Use_DropAnim = false
-DropAnim_StartFrame = 0
-DropAnim_EndFrame = 0
-DropAnim_Interval = 0.1
 Use_HitAnim = true
 HitAnim_StartFrame = 1
 HitAnim_EndFrame = 4
-HitAnim_Interval = 0.1
 Remote_Hit_Drawer = NodePath("../proxy")
 
-[node name="Polygon2D" type="Polygon2D" parent="Rain2D" index="0"]
-
+[node name="Polygon2D" type="Polygon2D" parent="Rain2D"]
 show_behind_parent = true
-polygon = PoolVector2Array( 300, 290, 200, 510, 850, 510, 750, 290 )
-uv = PoolVector2Array(  )
 color = Color( 0.154533, 0.065918, 0.3125, 1 )
-vertex_colors = PoolColorArray(  )
-offset = Vector2( 0, 0 )
-antialiased = false
-texture = null
-texture_offset = Vector2( 0, 0 )
-texture_scale = Vector2( 1, 1 )
-texture_rotation_degrees = 0.0
-invert_enable = false
-invert_border = 100.0
-_sections_unfolded = [ "Visibility" ]
+polygon = PoolVector2Array( 300, 290, 200, 510, 850, 510, 750, 290 )
 
-[node name="proxy" type="Node2D" parent="." index="1"]
-
+[node name="proxy" type="Node2D" parent="."]
 script = ExtResource( 4 )
-
 

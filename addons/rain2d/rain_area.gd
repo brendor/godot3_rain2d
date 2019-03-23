@@ -208,8 +208,8 @@ func initialize():
 			d.area = Physics2DServer.area_create()
 			Physics2DServer.area_set_space( d.area, get_world_2d().get_space() )
 			Physics2DServer.area_add_shape( d.area, shape )
-			Physics2DServer.area_set_collision_layer( d.area, get_layer_mask() )
-			Physics2DServer.area_set_collision_mask( d.area, get_collision_mask() )
+			Physics2DServer.area_set_collision_layer( d.area, self.collision_layer )
+			Physics2DServer.area_set_collision_mask( d.area, self.collision_mask )
 			Physics2DServer.area_set_monitor_callback( d.area, d, "_on_collide" )
 		
 		d.total_time = Start_Alpha_Time # so that the new drops start with full alpha
@@ -233,8 +233,8 @@ func shapepos( d ):
 	if Passive:
 		return
 	
-	var mat = Matrix32( shape_transform )
-	mat.o += d.pos + get_pos()
+	var mat = Transform2D( shape_transform )
+	mat.origin += d.pos + position
 	
 	if not Passive:
 		Physics2DServer.area_set_transform( d.area, mat )

@@ -1,0 +1,28 @@
+[gd_scene load_steps=6 format=2]
+
+[ext_resource path="res://addons/rain2d/rain_shadermaterial.tres" type="Material" id=1]
+[ext_resource path="res://addons/rain2d/rain_multimesh.tres" type="MultiMesh" id=2]
+[ext_resource path="res://addons/rain2d/rain_drop.png" type="Texture" id=3]
+[ext_resource path="res://addons/rain2d/rain_area.gd" type="Script" id=4]
+
+[sub_resource type="Gradient" id=1]
+colors = PoolColorArray( 0.742188, 0.87915, 1, 0.204235, 0.785156, 0.808655, 1, 0.523412 )
+
+[node name="rain" type="Area2D"]
+material = ExtResource( 1 )
+input_pickable = false
+monitoring = false
+monitorable = false
+collision_layer = 0
+collision_mask = 0
+script = ExtResource( 4 )
+DropMesh = ExtResource( 2 )
+DropTexture = ExtResource( 3 )
+DropTextureVFrames = 12
+Drop_Through_Side_Spread = 500.0
+Frame_Modulate = SubResource( 1 )
+Min_Drop_Speed = 200.0
+Max_Drop_Speed = 450.0
+Use_HitAnim = true
+HitAnim_StartFrame = 1
+HitAnim_EndFrame = 4

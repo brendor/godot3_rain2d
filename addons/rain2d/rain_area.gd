@@ -111,7 +111,7 @@ func _ready():
 
 	
 	for c in get_children():
-		polygon_areas.append([c, utils.calculate_areas(c)])
+		polygon_areas.append([c, calculate_areas(c)])
 		pass
 	
 	var st = get_viewport().get_visible_rect().size
@@ -160,8 +160,8 @@ func _ready():
 		nframe_hit = 0
 		nframe_hit_water = 0
 	
-	logger.info("[rain] frame sequence: " + str(framesequence))
-	logger.info("[rain] frame counts: %d %d %d %d" % [nframe_start, nframe_drop, nframe_hit, nframe_hit_water])
+	print("[rain] frame sequence: " + str(framesequence))
+	print("[rain] frame counts: %d %d %d %d" % [nframe_start, nframe_drop, nframe_hit, nframe_hit_water])
 	
 	# search for a colision polygon child
 	if DropTemplate:
@@ -176,17 +176,18 @@ func _ready():
 				break
 		if not shape:
 			Passive = true
-			logger.info("[rain] No drop collision shape - Passive mode")
+			print("[rain] No drop collision shape - Passive mode")
 		else:
-			logger.info("[rain] Drop shape transform: " + str(shape_transform))
+			print("[rain] Drop shape transform: " + str(shape_transform))
 		dropobj.queue_free()
 	
-	call_deferred("initialize")
-	
-	logger.info("rain ready!")
+	print("rain ready!")
+
+func _enter_tree():
+    initialize()
 
 func initialize():
-	logger.info("rain initializing...")
+	print("rain initializing...")
 	
 	randomize()
 	var vrect = get_viewport().get_visible_rect()
@@ -213,11 +214,11 @@ func initialize():
 	# create a bunch of drops
 	var drop_count = (screen_radius / 10.0) * Drops_Per_10_Px
 	
-	logger.info("[rain] initializing multimesh")
+	print("[rain] initializing multimesh")
 	
 	_multimesh_instancer = MultiMeshInstance2D.new()
 	_multimesh_instancer.name = "rain_instancer"
-	utils.reparent(_multimesh_instancer, _remote_hit_drawer if _remote_hit_drawer else self)
+	reparent(_multimesh_instancer, _remote_hit_drawer if _remote_hit_drawer else self)
 	_multimesh_instancer.multimesh = DropMesh
 	_multimesh_instancer.multimesh.instance_count = drop_count
 	_multimesh_instancer.texture = DropTexture
@@ -225,7 +226,7 @@ func initialize():
 	#_multimesh_instancer.material.set_shader_param("frame_size", 1.0 / float(framesequence.size()))
 	_multimesh_instancer.material.set_shader_param("frame_count", DropTextureVFrames)
 	
-	logger.info("[rain] initializing drop system with %d drops" % drop_count)
+	print("[rain] initializing drop system with %d drops" % drop_count)
 	
 	for i in range(drop_count):
 		# instance drop
@@ -267,7 +268,7 @@ func initialize():
 	# start the process
 	set_process( true )
 	
-	logger.info("rain initialized!")
+	print("rain initialized!")
 	pass
 
 func shapepos(d):
@@ -419,7 +420,7 @@ func random_drop_point(d):
 		
 		var canDrop = false
 		for pa in polygon_areas:
-			if utils.is_point_inside_polygon_full(d.endpos, pa[0]):
+			if is_point_inside_polygon_full(d.endpos, pa[0]):
 				canDrop = true
 				d.water = pa[0].is_in_group("water")
 				break
@@ -440,9 +441,71 @@ func random_drop_point(d):
 func point_in_any_area(p):
 	if polygon_areas.size() > 0:
 		for pa in polygon_areas:
-			if utils.is_point_inside_polygon(p, pa[0]):
+			if is_point_inside_polygon(p, pa[0]):
 				return true
 		return false
 	return true
 
-	
+static func is_point_inside_polygon( p, poly ):
+	var points = poly.get_polygon()
+	if points.size() < 3:
+		return false
+	var trans = poly.get_global_transform()
+	for i in range(points.size() - 2):
+		var a = trans * points[i]
+		var b = trans * points[i + 1]
+		var c = trans * points[i + 2]
+		if Geometry.point_is_inside_triangle(p, a, b, c):
+			return true
+	return false
+   
+static func is_point_inside_polygon_full( p, poly ):
+	# adapted from http://www.ariel.com.au/a/python-point-int-poly.html
+	var points = poly.get_polygon()
+	var trans = poly.get_global_transform()
+	var n = points.size()
+	var inside = false
+	var p1 = trans * points[0]
+	var p2 = Vector2()
+	var xinters = 0.0
+	for i in range( n + 1 ):
+		p2 = trans * points[ i % n ]
+		if p.y > min( p1.y, p2.y ):
+			if p.y <= max( p1.y, p2.y ):
+				if p.x <= max( p1.x, p2.x ):
+					if p1.y != p2.y:
+						xinters = ( p.y - p1.y ) * ( p2.x - p1.x ) / ( p2.y - p1.y ) + p1.x
+					if p1.x == p2.x or p.x <= xinters:
+						inside = not inside
+		p1 = p2
+	return inside
+
+static func reparent(node, new_parent):
+	var parent = node.get_parent()
+	var transformation = node.get_global_transform()
+	if parent:
+		parent.remove_child(node)
+	new_parent.add_child(node)
+	node.set_owner(new_parent)
+	node.set_position(Vector2(0.0, 0.0))
+	node.set_global_transform(transformation)
+
+static func calculate_areas(poly):
+	var areas = []
+	var total_area = 0.0
+
+	var points = poly.get_polygon()
+	if points.size() < 3:
+		return [areas, 0.0]
+
+	for i in range(points.size() - 2):
+		var a = points[i]
+		var b = points[i + 1]
+		var c = points[i + 2]
+		var area = area_of_triangle(a, b, c)
+		total_area += area
+		areas.append(area)
+	return [areas, total_area]
+
+static func area_of_triangle(A, B, C):
+	return abs(A.x * B.y + A.y * C.x + B.x * C.y - C.x * B.y - C.y * A.x - A.y * B.x) / 2.0

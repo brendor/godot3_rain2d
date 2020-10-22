@@ -1,10 +1,15 @@
 extends Node2D
 
+export(NodePath) var Navigation_Root = null
+
 export(MultiMesh) var DropMesh = null
 export(Texture) var DropTexture = null
 export(int) var DropTextureVFrames = 1
 
 export(PackedScene) var DropTemplate = null
+
+# defines which objects are water
+export(String) var Water_Group = "water" 
 
 export(float) var Drop_Radius_Factor = 1.0
 export(float) var Drops_Per_10_Px = 2.0
@@ -12,6 +17,7 @@ export(float) var Drop_Length = 800.0
 export(float) var Drop_Angle = 67.0
 
 export(Vector2) var Size = Vector2(2.0, 2.0)
+export(Vector2) var Size_Variation = Vector2(1.0, 1.0)
 
 export(bool) var Drop_Through = false # every drop is a drop-through
 export(bool) var Drop_Through_On_Miss = true
@@ -46,10 +52,6 @@ export(float) var HitWaterAnim_Interval = 0.1
 
 export(NodePath) var Remote_Hit_Drawer = null
 
-# rain area
-#export( int ) var Polygon_Point_Count =200
-
-
 # Member Variables
 var rain_direction
 var drops = []
@@ -57,13 +59,6 @@ var drops = []
 var shape
 var shape_transform
 
-# manage frames
-#var Drop_Texture = null
-
-var Hframes = 1
-var Vframes = 1
-#var framesize = Vector2()
-#var framerects = []
 var framesequence = []
 var nframe_start = 0
 var nframe_drop = 0
@@ -77,10 +72,10 @@ var polygon_areas = []
 
 var cached_viewport_base = Vector2()
 var cached_viewport_size = Vector2()
-
-var _remote_hit_drawer = null
+var cached_viewport_center = Vector2()
 
 var _multimesh_instancer = null
+var _multimesh_instancer_ground = null
 
 # Inner classes
 class Drop:
@@ -109,10 +104,18 @@ func _ready():
 	set_process(false)
 	randomize()
 
-	
 	for c in get_children():
-		polygon_areas.append([c, utils.calculate_areas(c)])
+		if c is CollisionPolygon2D:
+			polygon_areas.append([c, calculate_areas(c.get_polygon())])
 		pass
+		
+	if Navigation_Root:
+		var nr = get_node(Navigation_Root)
+		for cp in nr.get_children():
+			if cp is NavigationPolygonInstance:
+				for poly_id in range(cp.navpoly.get_outline_count()):
+					var outline = cp.navpoly.get_outline(poly_id)
+					polygon_areas.append([outline, calculate_areas(outline)])
 	
 	var st = get_viewport().get_visible_rect().size
 	screen_radius = st.length() * Drop_Radius_Factor
@@ -120,23 +123,6 @@ func _ready():
 	# the rain direction
 	rain_direction = Vector2( cos( Drop_Angle * PI / 180 ), sin( Drop_Angle * PI / 180 ) )
 	rain_direction = rain_direction.normalized()
-	
-	# the texture
-#	Drop_Texture = dropobj.get_texture()
-#	if not Drop_Texture: return
-#	var texsize = Drop_Texture.get_size()
-#	Hframes = dropobj.get_hframes()
-#	Vframes = dropobj.get_vframes()
-#	framesize = Vector2( texsize.x / Hframes, texsize.y / Vframes )
-#	for y in range( Vframes ):
-#		for x in range( Hframes ):
-#			framerects.append( Rect2( Vector2( x * framesize.x, y * framesize.y ), framesize ) )
-#
-#	framesize *= Size
-	
-	if Remote_Hit_Drawer:
-		_remote_hit_drawer = get_node(Remote_Hit_Drawer)
-		#_remote_hit_drawer.texture = Drop_Texture
 	
 	# the frames
 	if Use_StartAnim:
@@ -160,8 +146,8 @@ func _ready():
 		nframe_hit = 0
 		nframe_hit_water = 0
 	
-	logger.info("[rain] frame sequence: " + str(framesequence))
-	logger.info("[rain] frame counts: %d %d %d %d" % [nframe_start, nframe_drop, nframe_hit, nframe_hit_water])
+	print("[rain] frame sequence: " + str(framesequence))
+	print("[rain] frame counts: %d %d %d %d" % [nframe_start, nframe_drop, nframe_hit, nframe_hit_water])
 	
 	# search for a colision polygon child
 	if DropTemplate:
@@ -176,31 +162,26 @@ func _ready():
 				break
 		if not shape:
 			Passive = true
-			logger.info("[rain] No drop collision shape - Passive mode")
+			print("[rain] No drop collision shape - Passive mode")
 		else:
-			logger.info("[rain] Drop shape transform: " + str(shape_transform))
+			print("[rain] Drop shape transform: " + str(shape_transform))
 		dropobj.queue_free()
+	else:
+		Passive = true
 	
-	call_deferred("initialize")
+	#call_deferred("initialize")
 	
-	logger.info("rain ready!")
+	print("rain ready!")
+
+func _enter_tree():
+	initialize()
 
 func initialize():
-	logger.info("rain initializing...")
+	print("rain initializing...")
 	
 	randomize()
-	var vrect = get_viewport().get_visible_rect()
-	var st = vrect.size
 	
-	var zoom = Vector2(1.0, 1.0)
-	var pp = vrect.position + vrect.size * 0.5
-	
-	if global.player:
-		pp = global.player.get_global_position()
-		zoom = global.player.camera.get_zoom()
-		
-	cached_viewport_size = Vector2(st.x * zoom.x, st.y * zoom.y)
-	cached_viewport_base = pp - cached_viewport_size * 0.5
+	update_viewport()
 	
 	var _sin = sin(deg2rad(Drop_Angle))
 	if _sin != 0.0:
@@ -213,32 +194,44 @@ func initialize():
 	# create a bunch of drops
 	var drop_count = (screen_radius / 10.0) * Drops_Per_10_Px
 	
-	logger.info("[rain] initializing multimesh")
+	print("[rain] initializing multimesh")
 	
 	_multimesh_instancer = MultiMeshInstance2D.new()
 	_multimesh_instancer.name = "rain_instancer"
-	utils.reparent(_multimesh_instancer, _remote_hit_drawer if _remote_hit_drawer else self)
-	_multimesh_instancer.multimesh = DropMesh
+	self.add_child(_multimesh_instancer)
+	_multimesh_instancer.set_owner(self)
+	_multimesh_instancer.multimesh = DropMesh.duplicate()
 	_multimesh_instancer.multimesh.instance_count = drop_count
+	_multimesh_instancer.multimesh.visible_instance_count = -1
 	_multimesh_instancer.texture = DropTexture
 	_multimesh_instancer.material = material
-	#_multimesh_instancer.material.set_shader_param("frame_size", 1.0 / float(framesequence.size()))
 	_multimesh_instancer.material.set_shader_param("frame_count", DropTextureVFrames)
 	
-	logger.info("[rain] initializing drop system with %d drops" % drop_count)
+	var rhd = get_node(Remote_Hit_Drawer)
+	if rhd:
+		_multimesh_instancer_ground = MultiMeshInstance2D.new()
+		_multimesh_instancer_ground.name = "rain_instancer_remote"
+		rhd.add_child(_multimesh_instancer_ground)
+		_multimesh_instancer_ground.set_owner(rhd)
+		_multimesh_instancer_ground.multimesh = DropMesh.duplicate()
+		_multimesh_instancer_ground.multimesh.instance_count = drop_count
+		_multimesh_instancer_ground.multimesh.visible_instance_count = -1
+		_multimesh_instancer_ground.texture = DropTexture
+		_multimesh_instancer_ground.material = material
+		_multimesh_instancer_ground.material.set_shader_param("frame_count", DropTextureVFrames)
+	
+	print("[rain] initializing drop system with %d drops" % drop_count)
 	
 	for i in range(drop_count):
 		# instance drop
 		var d = Drop.new()
 		d.instanceID = i
-		d.trans.x.x = Size.x
-		d.trans.y.y = Size.x
 		
 		# speed
 		d.speed = rand_range( Min_Drop_Speed, Max_Drop_Speed )
 		# area
 		
-		if not Passive:
+		if not Passive and shape:
 			d.area = Physics2DServer.area_create()
 			Physics2DServer.area_set_space( d.area, get_world_2d().get_space() )
 			Physics2DServer.area_add_shape( d.area, shape )
@@ -267,7 +260,7 @@ func initialize():
 	# start the process
 	set_process( true )
 	
-	logger.info("rain initialized!")
+	print("rain initialized!")
 	pass
 
 func shapepos(d):
@@ -286,21 +279,53 @@ func random_modulate(d):
 
 func set_color(d, c):
 	d.col = c
-	_multimesh_instancer.multimesh.set_instance_color(d.instanceID, c)
+	if _multimesh_instancer_ground and d.state == 2:
+		_multimesh_instancer.multimesh.set_instance_color(d.instanceID, Color(0.0, 0.0, 0.0, 0.0))
+		#_multimesh_instancer.multimesh.set_instance_transform_2d(d.instanceID, Transform2D(0.0, Vector2(0.0, 0.0)))
+		_multimesh_instancer_ground.multimesh.set_instance_color(d.instanceID, c)
+	else:
+		_multimesh_instancer.multimesh.set_instance_color(d.instanceID, c)
+		if _multimesh_instancer_ground:
+			_multimesh_instancer_ground.multimesh.set_instance_color(d.instanceID, Color(0.0, 0.0, 0.0, 0.0))
+
+func set_color_remote(d, c):
+	if not _multimesh_instancer_ground:
+		return
+	_multimesh_instancer_ground.multimesh.set_instance_color(d.instanceID, c)
 
 func set_frame(d, f):
 	d.frame = f
 	var c = Color(framesequence[f], 0.0, 0.0, 0.0)
-	_multimesh_instancer.multimesh.set_instance_custom_data(d.instanceID, c)
+	
+	if _multimesh_instancer_ground and d.state == 2:
+		_multimesh_instancer_ground.multimesh.set_instance_custom_data(d.instanceID, c)
+	else:
+		_multimesh_instancer.multimesh.set_instance_custom_data(d.instanceID, c)
 
 func update_position(d):
-	_multimesh_instancer.multimesh.set_instance_transform_2d(d.instanceID, d.trans)
+	if _multimesh_instancer_ground and d.state == 2:
+		_multimesh_instancer_ground.multimesh.set_instance_transform_2d(d.instanceID, d.trans)
+		_multimesh_instancer_ground.multimesh.visible_instance_count = -1
+	else:
+		_multimesh_instancer.multimesh.set_instance_transform_2d(d.instanceID, d.trans)
+		_multimesh_instancer.multimesh.visible_instance_count = -1
+
+func update_viewport():
+	var vtrans = get_canvas_transform()
+	var top_left = -vtrans.get_origin() / vtrans.get_scale()
+	cached_viewport_base = top_left
+	var vsize = get_viewport_rect().size
+	cached_viewport_size = vsize / vtrans.get_scale()
+	cached_viewport_center = top_left + 0.5 * cached_viewport_size 
+	pass
 
 func _process( delta ):
-	if global.player:
-		var vt = global.player.camera.get_viewport_transform()
-		var zoom = global.player.camera.get_zoom()
-		cached_viewport_base = -vt.origin * zoom
+	
+	update_viewport()
+	
+	_multimesh_instancer.multimesh.visible_instance_count = 0
+	if _multimesh_instancer_ground:
+		_multimesh_instancer_ground.multimesh.visible_instance_count = 0
 	
 	var newpos
 	for d in drops:
@@ -318,6 +343,7 @@ func _process( delta ):
 			else:
 				set_frame(d, nframe_start)
 				d.state = 1
+			update_position(d)
 		if d.state == 1:
 			# play drop animation by shifting frames
 			d.timer += delta
@@ -333,14 +359,14 @@ func _process( delta ):
 			# compute new position
 			d.trans.origin += delta * d.speed * rain_direction
 			
-			shapepos( d )
+			shapepos(d)
 
 			if d.drop_through:
 				if d.trans.origin.y > (cached_viewport_base.y + cached_viewport_size.y) or d.trans.origin.y < (cached_viewport_base.y - cached_viewport_size.y):
 					d.state = 3
+					set_color(d, d.col)
 					if not Drop_Through:
 						d.drop_through = false
-					pass
 			else:
 				if ( sign( rain_direction.x ) > 0 and d.trans.origin.x > d.endpos.x ) or \
 					( sign( rain_direction.x ) < 0 and d.trans.origin.x < d.endpos.x ) or \
@@ -349,100 +375,162 @@ func _process( delta ):
 					
 					d.timer = 0.0
 					d.state = 2
-					
+			
+					set_color(d, d.col)
 					if d.water:
 						set_frame(d, HitWaterAnim_StartFrame)
 					else:
 						set_frame(d, HitAnim_StartFrame)
-					pass
-				
+			update_position(d)
 		elif d.state == 2:
 			# play coliding animation by shifting frames
 			d.timer += delta
+
 			if not d.water:
 				if d.timer >= HitAnim_Interval:
 					d.timer = 0.0
-					set_frame(d, d.frame + 1)
-					if d.frame >= nframe_start + nframe_drop + nframe_hit:
+					if d.frame + 1 >= nframe_start + nframe_drop + nframe_hit:
 						# reset drop
 						d.state = 3
-						set_frame(d, 0)
 						d.total_time = 0.0
+					else:
+						set_frame(d, d.frame + 1)
 			else:
 				if d.timer >= HitWaterAnim_Interval:
 					d.timer = 0.0
-					set_frame(d, d.frame + 1)
-					if d.frame >= nframe_start + nframe_drop + nframe_hit + nframe_hit_water:
+					if d.frame + 1 >= nframe_start + nframe_drop + nframe_hit + nframe_hit_water:
 						# reset drop
 						d.state = 3
-						set_frame(d, 0)
 						d.total_time = 0.0
+					else:
+						set_frame(d, d.frame + 1)
+			update_position(d)
 		elif d.state == 3: # reset
+			# set remote color to blank
+			#set_color_remote(d, d.col)
+			
+			# reset state
 			d.state = 0
 			
-			random_drop_point(d)
+			# reset front frame
+			set_frame(d, 0)
+			# randomize front color
 			random_modulate(d)
+			
+			# randomize and set front position
+			random_drop_point(d)
 			shapepos(d)
-		update_position(d)
-	#update()
-
-
-#func _draw():
-#	for d in drops:
-#		# check if this drop is to be drawn
-#		if d.trans.x < cached_viewport_base.x or d.trans.x > ( cached_viewport_base.x + cached_viewport_size.x ) or \
-#			d.trans.y < cached_viewport_base.y or d.trans.y > ( cached_viewport_base.y + cached_viewport_size.y ):
-#			continue
-#		# draw drop
-#		var c = d.col
-#		var fac = clamp(d.total_time, 0.0, Start_Alpha_Time) / Start_Alpha_Time
-#		c.a = c.a * fac
-#		if d.state == 2 and _remote_hit_drawer:
-#			_remote_hit_drawer.queue_draw(Rect2(d.trans, framesize), framerects[ framesequence[d.frame] ], c)
-#			pass
-#		else:
-#			draw_texture_rect_region( Drop_Texture, \
-#				Rect2( d.trans, framesize ), framerects[ framesequence[ d.frame ] ], c )
+			update_position(d)
+			pass
+			
 
 func random_drop_point(d):
 	d.water = false
+	
+	var variation = rand_range(Size_Variation.x, Size_Variation.y)
+	d.trans.x.x = Size.x * variation
+	d.trans.y.y = Size.y * variation
 	
 	if not Drop_Through:
 		var angle = rand_range(-PI, PI)
 		var dir = Vector2(cos(angle), -sin(angle))
 		var fac = rand_range(0.0, screen_radius)
 		var center = Vector2()
-		if global.player:
-			center = global.player.camera.get_camera_screen_center()
-		d.endpos = center + dir * fac
+		
+		d.endpos = cached_viewport_center + dir * fac
 		d.trans.origin = d.endpos - rain_direction * Drop_Length
+		
+		var intersect = Geometry.line_intersects_line_2d(d.endpos, - rain_direction * Drop_Length, cached_viewport_base, Vector2.RIGHT)
+		if intersect is Vector2:
+			d.trans.origin = intersect
 		
 		var canDrop = false
 		for pa in polygon_areas:
-			if utils.is_point_inside_polygon_full(d.endpos, pa[0]):
-				canDrop = true
-				d.water = pa[0].is_in_group("water")
-				break
+			if pa[0] is CollisionPolygon2D:
+				if is_point_inside_polygon_full(d.endpos, pa[0].get_polygon(), pa[0].get_global_position()):
+					canDrop = true
+					d.water = pa[0].is_in_group(Water_Group)
+					break
+			else:
+				if is_point_inside_polygon_full(d.endpos, pa[0], Transform2D.IDENTITY):
+					canDrop = true
+					d.water = false
+					break
 		
 		if not canDrop:
 			if not Drop_Through_On_Miss:
 				d.state = 3
 			else:
 				d.drop_through = true
+		else:
+			d.drop_through = false
 	else:
 		d.drop_through = true
 	
 	if d.drop_through:
 		d.trans.origin = Vector2(cached_viewport_base.x + rand_range(-screen_drop_extend - Drop_Through_Side_Spread, cached_viewport_size.x + Drop_Through_Side_Spread),\
 			cached_viewport_base.y)
-		pass
+#	else:
+#		d.trans.origin.y = cached_viewport_base.y
 
 func point_in_any_area(p):
 	if polygon_areas.size() > 0:
 		for pa in polygon_areas:
-			if utils.is_point_inside_polygon(p, pa[0]):
+			if is_point_inside_polygon(p, pa[0]):
 				return true
 		return false
 	return true
 
+func calculate_areas(points):
+	var areas = []
+	var total_area = 0.0
+
+	if points.size() < 3:
+		return [areas, 0.0]
+
+	for i in range(points.size() - 2):
+		var a = points[i]
+		var b = points[i + 1]
+		var c = points[i + 2]
+		var area = area_of_triangle(a, b, c)
+		total_area += area
+		areas.append(area)
+	return [areas, total_area]
+
+func area_of_triangle(A, B, C):
+	return abs(A.x * B.y + A.y * C.x + B.x * C.y - C.x * B.y - C.y * A.x - A.y * B.x) / 2.0
 	
+func is_point_inside_polygon_full( p, points, trans ):
+	# adapted from http://www.ariel.com.au/a/python-point-int-poly.html
+	#var points = poly.get_polygon()
+	#var trans = poly.get_global_transform()
+	var n = points.size()
+	var inside = false
+	var p1 = trans * points[0]
+	var p2 = Vector2()
+	var xinters = 0.0
+	for i in range( n + 1 ):
+		p2 = trans * points[ i % n ]
+		if p.y > min( p1.y, p2.y ):
+			if p.y <= max( p1.y, p2.y ):
+				if p.x <= max( p1.x, p2.x ):
+					if p1.y != p2.y:
+						xinters = ( p.y - p1.y ) * ( p2.x - p1.x ) / ( p2.y - p1.y ) + p1.x
+					if p1.x == p2.x or p.x <= xinters:
+						inside = not inside
+		p1 = p2
+	return inside
+
+
+func is_point_inside_polygon( p, poly ):
+	var points = poly.get_polygon()
+	if points.size() < 3:
+		return false
+	var trans = poly.get_global_transform()
+	for i in range(points.size() - 2):
+		var a = trans * points[i]
+		var b = trans * points[i + 1]
+		var c = trans * points[i + 2]
+		if Geometry.point_is_inside_triangle(p, a, b, c):
+			return true
+	return false

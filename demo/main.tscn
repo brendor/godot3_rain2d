@@ -1,34 +1,45 @@
-[gd_scene load_steps=6 format=2]
+[gd_scene load_steps=8 format=2]
 
-[ext_resource path="res://addons/rain2d/rain_area.gd" type="Script" id=1]
-[ext_resource path="res://addons/rain2d/icon.png" type="Texture" id=2]
-[ext_resource path="res://addons/rain2d/rain_drop.tscn" type="PackedScene" id=3]
-[ext_resource path="res://addons/rain2d/rain_remote.gd" type="Script" id=4]
+[ext_resource path="res://addons/rain_area.gd" type="Script" id=1]
+[ext_resource path="res://addons/rain_multimesh.tres" type="MultiMesh" id=2]
+[ext_resource path="res://addons/rain_drop.png" type="Texture" id=3]
+[ext_resource path="res://addons/rain_shadermaterial.tres" type="Material" id=4]
+[ext_resource path="res://icon.png" type="Texture" id=5]
+
+[sub_resource type="NavigationPolygon" id=2]
+vertices = PoolVector2Array( 717.263, 265.632, 715.158, 499.316, 303.579, 484.579, 304.632, 264.579 )
+polygons = [ PoolIntArray( 0, 1, 2, 3 ) ]
+outlines = [ PoolVector2Array( 304.632, 264.579, 303.579, 484.579, 715.158, 499.316, 717.263, 265.632 ) ]
 
 [sub_resource type="Gradient" id=1]
-colors = PoolColorArray( 0.867188, 1, 0.993774, 0.143647, 0.808594, 0.932709, 1, 0.447529 )
+colors = PoolColorArray( 0.851563, 0.9092, 1, 0.25098, 0.6875, 0.795387, 1, 0.235294 )
 
 [node name="root" type="Node2D"]
 
-[node name="Rain2D" type="Node2D" parent="."]
+[node name="icon" type="Sprite" parent="."]
+position = Vector2( 513.836, 376.439 )
+scale = Vector2( 6.87618, 3.72606 )
+texture = ExtResource( 5 )
+
+[node name="proxy" type="Node2D" parent="."]
+
+[node name="Navigation2D" type="Navigation2D" parent="."]
+
+[node name="NavigationPolygonInstance" type="NavigationPolygonInstance" parent="Navigation2D"]
+navpoly = SubResource( 2 )
+
+[node name="Rain2D" type="Area2D" parent="."]
+material = ExtResource( 4 )
+input_pickable = false
+collision_layer = 0
+collision_mask = 0
 script = ExtResource( 1 )
-__meta__ = {
-"_editor_icon": ExtResource( 2 )
-}
-DropTemplate = ExtResource( 3 )
-Drops_Per_10_Px = 3.0
-Size = Vector2( 1, 1 )
+Navigation_Root = NodePath("../Navigation2D")
+DropMesh = ExtResource( 2 )
+DropTexture = ExtResource( 3 )
+DropTextureVFrames = 12
+Size = Vector2( 3, 3 )
 Frame_Modulate = SubResource( 1 )
 Use_HitAnim = true
 HitAnim_StartFrame = 1
 HitAnim_EndFrame = 4
-Remote_Hit_Drawer = NodePath("../proxy")
-
-[node name="Polygon2D" type="Polygon2D" parent="Rain2D"]
-show_behind_parent = true
-color = Color( 0.154533, 0.065918, 0.3125, 1 )
-polygon = PoolVector2Array( 300, 290, 200, 510, 850, 510, 750, 290 )
-
-[node name="proxy" type="Node2D" parent="."]
-script = ExtResource( 4 )
-
